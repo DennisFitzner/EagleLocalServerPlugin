@@ -119,14 +119,7 @@ fetch('http://localhost:8080/files/search?q=landscape&type=image&limit=5')
 
 ### Test the Plugin
 
-You can test the plugin functionality using the included test script:
-
-```bash
-cd eagleServer
-node test-server.js
-```
-
-This will start a test server that mocks the Eagle API and allows you to test the plugin functionality.
+You can just drag the "Eagle File Server.eagleplugin" into your running eagle instance to install the plugin. If you want to change anything you have to reload it via the deleloper options - Import Local Project.
 
 ### Test Endpoints
 
@@ -143,25 +136,16 @@ Once the server is running, you can test the following endpoints:
 
 ```
 eagleServer/
-├── manifest.json          # Eagle plugin manifest
-├── index.html             # Plugin UI
+├── Eagle File Server.eagleplugin          # packed Eagle plugin 
+├── manifest.json                          # Eagle plugin manifest
+├── index.html                             # Plugin UI
 ├── js/
-│   └── plugin.js         # Main plugin logic
-├── package.json          # Dependencies
-├── test-server.js        # Test script
-├── logo.png              # Plugin logo
-└── README.md             # This file
+  │   └── plugin.js                        # Main plugin logic
+  ├── package.json                         # Dependencies
+  ├── test-server.js                       # Test script
+  ├── logo.png                             # Plugin logo
+  └── README.md                            # This file
 ```
-
-### Plugin Lifecycle
-
-The plugin follows Eagle's plugin lifecycle:
-
-1. **onPluginCreate** - Plugin is created
-2. **onPluginRun** - Plugin starts and initializes the server
-3. **onPluginShow** - Plugin UI is shown
-4. **onPluginHide** - Plugin UI is hidden
-5. **onPluginDestroy** - Plugin is destroyed and server stops
 
 ## Troubleshooting
 
@@ -176,26 +160,7 @@ The plugin follows Eagle's plugin lifecycle:
    - Check file permissions
    - Verify file IDs are correct
 
-3. **CORS errors**:
-   - Enable CORS in plugin settings
-   - Or configure allowed origins
-
-### Debugging
-
-The plugin includes comprehensive logging. Check the console output for:
-- Server startup messages
-- Request logs
-- Error messages
-- Eagle API connection status
-
 ## License
 
 MIT License - see LICENSE file for details.
 
-## Support
-
-For issues and questions:
-1. Check the troubleshooting section
-2. Review the logs
-3. Create an issue in the repository
-4. Contact the plugin author
