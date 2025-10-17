@@ -3,7 +3,6 @@ console.log('Eagle File Server Plugin - Starting...');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 class EagleFileServer {
     constructor() {
@@ -12,29 +11,14 @@ class EagleFileServer {
         this.basePath = '/';
         this.enableCORS = true;
         this.server = null;
-        this.eagleDataPath = this.findEagleDataPath();
+        this.eagleDataPath = null; // Will be set when plugin initializes
     }
 
-    findEagleDataPath() {
-        const homeDir = process.env.HOME || process.env.USERPROFILE || os.homedir();
-        const eagleSettingsPath = path.join(homeDir, 'Library', 'Application Support', 'Eagle', 'Settings');
-        if (fs.existsSync(eagleSettingsPath)) {
-            try {
-                const settings = JSON.parse(fs.readFileSync(eagleSettingsPath, 'utf8'));
-                if (settings.rootDir && fs.existsSync(settings.rootDir)) {
-                    console.log(`Found Eagle library at: ${settings.rootDir}`);
-                    return settings.rootDir;
-                }
-            } catch (error) {
-                console.warn('Could not read Eagle settings:', error.message);
-            }
-        }
-        console.warn('Eagle data directory not found. Using current directory.');
-        return process.cwd();
-    }
 
     async init() {
         try {
+            // Get Eagle library path using the Eagle API
+            this.eagleDataPath = eagle.library.path;            
             console.log('Starting Eagle File Server...');
             this.startHTTPServer();
             console.log('Eagle File Server ready');
@@ -187,9 +171,9 @@ class EagleFileServer {
 
             this.server.on('error', (error) => {
                 if (error.code === 'EADDRINUSE') {
-                    console.error(`❌ Port ${this.port} is already in use. Please choose a different port.`);
+                    console.error(`Port ${this.port} is already in use. Please choose a different port.`);
                 } else {
-                    console.error('❌ Server error:', error);
+                    console.error('Server error:', error);
                 }
                 this.isRunning = false;
             });
@@ -241,7 +225,7 @@ class EagleFileServer {
         if (this.server) {
             this.server.close();
             this.isRunning = false;
-            console.log('🛑 Eagle File Server stopped');
+            console.log('Eagle File Server stopped');
         }
     }
 
