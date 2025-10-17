@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Eagle File Server Inspector</title>
+    <style>
+        body {
+            background: rgb(71, 72, 76);
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+
+        body[theme="LIGHT"],
+        body[theme="LIGHTGRAY"] {
+            background: white;
+            color: black;
+        }
+        
+        body[theme="GRAY"],
+        body[theme="BLUE"],
+        body[theme="PURPLE"],
+        body[theme="DARK"] {
+            background: rgb(71, 72, 76);
+            color: white;
+        }
+        
+        .inspector-container {
+            width: 100%;
+            height: 100%;
+            min-height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            margin: 0;
+            padding: 4px 8px;
+            line-height: 1;
+            min-width: 80px;
+            box-sizing: border-box;
+        }
+        
+        .inspector-container.copied {
+            color: #28a745;
+            font-weight: 600;
+        }
+    </style>
+    <script type="text/javascript" src="js/plugin.js"></script>
+</head>
+
+<body>
+    <div class="inspector-container" onclick="copyUrl()" id="click-instruction">
+        copy url
+    </div>
+    
+    <script>
+        function applyTheme() {
+            try {
+                const theme = eagle.app.theme;
+                document.body.setAttribute('theme', theme);
+                console.log('Applied theme:', theme);
+            } catch (error) {
+                console.log('Theme not available yet, using DARK as default');
+                document.body.setAttribute('theme', 'DARK');
+            }
+        }
+
+        applyTheme();
+
+        eagle.onPluginCreate((plugin) => {
+            applyTheme();
+        });
+
+        eagle.onThemeChanged((theme) => {
+            document.body.setAttribute('theme', theme);
+            console.log('Theme changed to:', theme);
+        });
+
+        async function copyUrl() {
+            try {
+                const selected = await eagle.item.getSelected();
+                
+                if (!selected || selected.length === 0) {
+                    alert('Please select a file first');
+                    return;
+                }
+                
+                const fileId = selected[0].id;
+                const url = `http://localhost:8080/files/${fileId}`;
+                
+                await navigator.clipboard.writeText(url);
+                
+                const instruction = document.getElementById('click-instruction');
+                const originalText = instruction.textContent;
+                instruction.textContent = 'Copied!';
+                instruction.classList.add('copied');
+                
+                setTimeout(() => {
+                    instruction.textContent = originalText;
+                    instruction.classList.remove('copied');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Failed to copy URL:', error);
+                alert('Failed to copy URL: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+    "id": "f0dd7d39-33f2-4519-8ee0-be928029ed0a",
+    "version": "1.0.0",
+    "platform": "all",
+    "arch": "all",
+    "name": "Eagle File Server",
+    "logo": "/logo.png",
+    "keywords": ["file-server", "http", "web", "api"],
+    "devTools": true,
+    "main": {
+        "serviceMode": true,
+        "url": "index.html",
+        "width": 800,
+        "height": 100
+    },
+    "preview": {
+        "jpg,jpeg,png,gif,webp,bmp,tiff,svg,psd,ai,sketch,figma": {
+            "inspector": {
+                "path": "index.html",
+                "height": 30,
+                "multiSelect": false
+            }
+        }
+    },
+    "permissions": [
+        "file-system",
+        "network"
+    ]
+}
