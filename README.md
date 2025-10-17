@@ -1,16 +1,19 @@
 # Eagle File Server Plugin
 
 A plugin for Eagle.cool that allows you to serve files from your Eagle library through a web server. This plugin runs as a background service and provides HTTP endpoints to access your files.
+It provides a simple button to copy HTTP URLs for easy use in Obsidian, web applications, or anywhere you need them.
+**Use Case**: Manage your images in Eagle, embed them in Obsidian
+- **Copy HTTP URLs** with one click from the inspector
+- **Embed images** directly in Obsidian using `![alt](http://localhost:8080/files/image-id)`
+- **No file duplication** - images stay in Eagle, referenced via HTTP URLs
 
+ 
 ## Features
-
-- 🚀 **Background Service**: Runs automatically when Eagle starts
-- 🌐 **HTTP Server**: Serves files via HTTP endpoints
-- 🔒 **Security**: Built-in security checks and CORS support
-- ⚙️ **Configurable**: Customizable port and settings
-- 📁 **File Access**: Access files by ID or search
-- 📊 **Metadata**: Access file metadata and tags
-- 🎯 **RESTful API**: Clean REST API for integration
+-  **Background Service**: Runs automatically when Eagle starts
+-  **HTTP Server**: Serves files via HTTP endpoints
+-  **File Access**: Access files by ID
+-  **Easy to Use**: A sweet small button in the Inspector to copy the URL
+-  **RESTful API**: Clean REST API for integration
 
 ## Installation
 
@@ -20,26 +23,11 @@ A plugin for Eagle.cool that allows you to serve files from your Eagle library t
 - Node.js (for dependencies)
 
 ### Setup
-
-1. **Install dependencies**:
-   ```bash
-   cd eagleServer
-   npm install
-   ```
-
-2. **Load the plugin in Eagle**:
+1. **Load the plugin in Eagle**:
    - Open Eagle.cool
    - Go to Plugin settings
    - Load the plugin from the `eagleServer` directory
    - Enable the plugin
-
-## Configuration
-
-The plugin can be configured through Eagle's plugin settings:
-
-- **Port**: Server port (default: 8080)
-- **Base Path**: Base path for the server (e.g., `/files`)
-- **Enable CORS**: Enable Cross-Origin Resource Sharing
 
 ## API Endpoints
 
@@ -67,63 +55,6 @@ GET /files/:fileId
 ```
 Serves a specific file by its Eagle ID.
 
-### Search Files
-```
-GET /files/search?q=query&type=image&limit=10
-```
-Search files in your Eagle library.
-
-## Usage Examples
-
-### Basic File Access
-
-```javascript
-// Get all files
-fetch('http://localhost:8080/files')
-  .then(response => response.json())
-  .then(data => console.log(data.files));
-
-// Get a specific file
-fetch('http://localhost:8080/files/your-file-id')
-  .then(response => response.blob())
-  .then(blob => {
-    const url = URL.createObjectURL(blob);
-    const img = document.createElement('img');
-    img.src = url;
-    document.body.appendChild(img);
-  });
-```
-
-### Search Files
-
-```javascript
-// Search for images
-fetch('http://localhost:8080/files/search?q=landscape&type=image&limit=5')
-  .then(response => response.json())
-  .then(data => console.log(data.results));
-```
-
-### Direct File Serving
-
-```html
-<!-- Serve an image directly -->
-<img src="http://localhost:8080/files/your-image-id" alt="My Image">
-
-<!-- Serve a video -->
-<video controls>
-  <source src="http://localhost:8080/files/your-video-id" type="video/mp4">
-</video>
-```
-
-## Testing
-
-### Test the Plugin
-
-You can just drag the "Eagle File Server.eagleplugin" into your running eagle instance to install the plugin. If you want to change anything you have to reload it via the deleloper options - Import Local Project.
-
-### Test Endpoints
-
-Once the server is running, you can test the following endpoints:
 
 - `http://localhost:8080/health` - Health check
 - `http://localhost:8080/info` - Plugin info
