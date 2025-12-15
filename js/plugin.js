@@ -17,155 +17,173 @@ class EagleFileServer {
 
     async init() {
         try {
-            // Get Eagle library path using the Eagle API
-            this.eagleDataPath = eagle.library.path;            
+            // Get Eagle library path using the Eagle API (still needed for file serving)
+            this.eagleDataPath = eagle.library.path;
+            
             console.log('Starting Eagle File Server...');
+            console.log(`Eagle library path: ${this.eagleDataPath || 'using Eagle API'}`);
+            
+            // Test Eagle API access
+            try {
+                const testItems = await eagle.item.get({ ids: [] });
+                console.log(`Eagle API accessible. Found ${testItems?.length || 0} items in library.`);
+            } catch (apiError) {
+                console.warn('Eagle API test failed:', apiError.message);
+            }
+            
             this.startHTTPServer();
             console.log('Eagle File Server ready');
         } catch (error) {
             console.error('Failed to initialize Eagle File Server:', error);
+            console.error('Error details:', error.message);
+            console.error('Stack trace:', error.stack);
         }
+    }
+
+    // Convert Eagle item to our file format
+    convertEagleItemToFile(item) {
+        if (!item) return null;
+        
+        const ext = (item.ext || '').toLowerCase();
+        const fileName = item.name || item.fileName || item.title || '';
+        
+        // Try multiple possible path properties
+        let filePath = item.filePath || item.path || item.file || '';
+        
+        // If path is relative or empty, try to construct it from library path
+        if (!filePath && this.eagleDataPath) {
+            // Fallback: construct path from library structure
+            const imagesPath = path.join(this.eagleDataPath, 'images');
+            const itemDir = `${item.id}.info`;
+            filePath = path.join(imagesPath, itemDir, fileName);
+        }
+        
+        return {
+            id: item.id,
+            name: fileName,
+            path: filePath,
+            type: this.getFileType(ext),
+            size: item.size || item.fileSize || 0,
+            created: item.dateCreated ? new Date(item.dateCreated).toISOString() : 
+                     item.created ? new Date(item.created).toISOString() : 
+                     new Date().toISOString(),
+            modified: item.dateModified ? new Date(item.dateModified).toISOString() : 
+                      item.modified ? new Date(item.modified).toISOString() : 
+                      new Date().toISOString(),
+            tags: item.tags || [],
+            folders: item.folders || [],
+            ext: ext,
+            width: item.width || null,
+            height: item.height || null,
+            metadata: item
+        };
     }
 
     async loadFileById(fileId) {
         try {
-            const imagesPath = path.join(this.eagleDataPath, 'images');
-            const itemDir = `${fileId}.info`;
-            const itemPath = path.join(imagesPath, itemDir);
+            // Use Eagle's API to get the item by ID
+            const item = await eagle.item.getById(fileId);
             
-            if (!fs.existsSync(itemPath)) {
-                return null; // File not found
-            }
-            
-            const metadataPath = path.join(itemPath, 'metadata.json');
-            if (!fs.existsSync(metadataPath)) {
+            if (!item) {
+                console.warn(`File not found via Eagle API: ${fileId}`);
                 return null;
             }
             
-            const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-            
-            // Find the main file in this directory
-            const filesInDir = fs.readdirSync(itemPath);
-            const mainFile = filesInDir.find(file => 
-                !file.endsWith('_thumbnail.png') && 
-                !file.endsWith('.json') &&
-                fs.statSync(path.join(itemPath, file)).isFile()
-            );
-            
-            if (!mainFile) {
-                return null;
-            }
-            
-            const mainFilePath = path.join(itemPath, mainFile);
-            const fileStat = fs.statSync(mainFilePath);
-            const ext = path.extname(mainFile).toLowerCase();
-            
-            return {
-                id: fileId,
-                name: mainFile,
-                path: mainFilePath,
-                type: this.getFileType(ext),
-                size: fileStat.size,
-                created: new Date(metadata.btime || fileStat.birthtime).toISOString(),
-                modified: new Date(metadata.mtime || fileStat.mtime).toISOString(),
-                tags: metadata.tags || [],
-                folders: metadata.folders || [],
-                ext: ext,
-                width: metadata.width || null,
-                height: metadata.height || null,
-                metadata: metadata
-            };
+            return this.convertEagleItemToFile(item);
             
         } catch (error) {
             console.error(`Error loading file ${fileId}:`, error);
+            console.error('Error message:', error.message);
             return null;
         }
     }
 
-    // Get all file IDs from the images directory
-    async getAllFileIds() {
+    // Get all items using Eagle's API
+    async getAllItems(filters = {}) {
         try {
-            const imagesPath = path.join(this.eagleDataPath, 'images');
-            if (!fs.existsSync(imagesPath)) {
-                return [];
+            // Parse extensions - Eagle API only supports one extension at a time
+            let extensions = [];
+            if (filters.ext && filters.ext.trim()) {
+                const extString = filters.ext.trim();
+                // Split by comma and clean up each extension
+                extensions = extString.split(',')
+                    .map(ext => ext.trim())
+                    .filter(ext => ext)
+                    .map(ext => {
+                        // Remove leading dot if present (Eagle API expects format like "jpg" not ".jpg")
+                        return ext.startsWith('.') ? ext.substring(1) : ext;
+                    });
             }
             
-            const dirs = fs.readdirSync(imagesPath);
-            const fileIds = dirs
-                .filter(dir => dir.endsWith('.info'))
-                .map(dir => dir.replace('.info', ''));
+            // Build base query without extension (since we handle extensions separately)
+            const baseQuery = {};
             
-            return fileIds;
+            // Keywords - array of strings
+            if (filters.keyword && filters.keyword.trim()) {
+                baseQuery.keywords = [filters.keyword.trim()];
+            }
+            
+            // Tags - array of strings
+            if (filters.tags) {
+                const tagsArray = Array.isArray(filters.tags) 
+                    ? filters.tags 
+                    : filters.tags.split(',').map(t => t.trim()).filter(t => t);
+                if (tagsArray.length > 0) {
+                    baseQuery.tags = tagsArray;
+                }
+            }
+            
+            // Folders - array of strings
+            if (filters.folders) {
+                const foldersArray = Array.isArray(filters.folders)
+                    ? filters.folders
+                    : filters.folders.split(',').map(f => f.trim()).filter(f => f);
+                if (foldersArray.length > 0) {
+                    baseQuery.folders = foldersArray;
+                }
+            }
+            
+            // If no extensions specified, make a single query
+            if (extensions.length === 0) {
+                console.log('Eagle API query:', JSON.stringify(baseQuery, null, 2));
+                const items = await eagle.item.get(baseQuery);
+                console.log(`Eagle API returned ${items?.length || 0} items`);
+                return items || [];
+            }
+            
+            // If multiple extensions, query each one separately and combine results
+            const allItems = [];
+            const seenIds = new Set(); // To avoid duplicates
+            
+            for (const ext of extensions) {
+                const query = { ...baseQuery, ext: ext };
+                console.log(`Eagle API query for ext "${ext}":`, JSON.stringify(query, null, 2));
+                const items = await eagle.item.get(query);
+                console.log(`Eagle API returned ${items?.length || 0} items for ext "${ext}"`);
+                
+                if (items && items.length > 0) {
+                    for (const item of items) {
+                        if (!seenIds.has(item.id)) {
+                            seenIds.add(item.id);
+                            allItems.push(item);
+                        }
+                    }
+                }
+            }
+            
+            console.log(`Total combined items: ${allItems.length}`);
+            return allItems;
         } catch (error) {
-            console.error('Error getting all file IDs:', error);
+            console.error('Error getting items from Eagle API:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
             return [];
         }
     }
 
-    // Filter files based on criteria
-    matchesFilter(file, filters) {
-        if (!file) return false;
-
-        // Keyword filter - search in name, tags, and metadata
-        if (filters.keyword) {
-            const keyword = filters.keyword.toLowerCase();
-            const nameMatch = file.name.toLowerCase().includes(keyword);
-            const tagsMatch = (file.tags || []).some(tag => 
-                tag.toLowerCase().includes(keyword)
-            );
-            const metadataMatch = JSON.stringify(file.metadata || {}).toLowerCase().includes(keyword);
-            
-            if (!nameMatch && !tagsMatch && !metadataMatch) {
-                return false;
-            }
-        }
-
-        // Extension filter
-        if (filters.ext) {
-            let extFilter = filters.ext.toLowerCase();
-            // Add dot if not present
-            if (!extFilter.startsWith('.')) {
-                extFilter = '.' + extFilter;
-            }
-            const fileExt = file.ext || path.extname(file.name).toLowerCase();
-            if (fileExt !== extFilter) {
-                return false;
-            }
-        }
-
-        // Tags filter - file must have all specified tags
-        if (filters.tags) {
-            const requiredTags = Array.isArray(filters.tags) 
-                ? filters.tags 
-                : filters.tags.split(',').map(t => t.trim());
-            const fileTags = (file.tags || []).map(t => t.toLowerCase());
-            const hasAllTags = requiredTags.every(tag => 
-                fileTags.includes(tag.toLowerCase())
-            );
-            if (!hasAllTags) {
-                return false;
-            }
-        }
-
-        // Folders filter - file must be in at least one of the specified folders
-        if (filters.folders) {
-            const requiredFolders = Array.isArray(filters.folders)
-                ? filters.folders
-                : filters.folders.split(',').map(f => f.trim());
-            const fileFolders = (file.folders || []).map(f => f.toLowerCase());
-            const hasAnyFolder = requiredFolders.some(folder =>
-                fileFolders.includes(folder.toLowerCase())
-            );
-            if (!hasAnyFolder) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // Sort files based on orderBy parameter
     sortFiles(files, orderBy) {
+        // Default to random if no orderBy specified
         if (!orderBy || orderBy.toLowerCase() === 'random') {
             // Shuffle array randomly
             for (let i = files.length - 1; i > 0; i--) {
@@ -199,37 +217,30 @@ class EagleFileServer {
             case 'size_desc':
                 return files.sort((a, b) => b.size - a.size);
             default:
-                // Default to created_desc
-                return files.sort((a, b) => new Date(b.created) - new Date(a.created));
+                // Default to random
+                for (let i = files.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [files[i], files[j]] = [files[j], files[i]];
+                }
+                return files;
         }
     }
 
     // Get list of files with filtering and pagination
     async getFileList(filters = {}) {
         try {
-            const fileIds = await this.getAllFileIds();
-            const files = [];
+            console.log('getFileList called with filters:', JSON.stringify(filters, null, 2));
             
-            // Load all files (this could be optimized with caching)
-            for (const fileId of fileIds) {
-                const file = await this.loadFileById(fileId);
-                if (file && this.matchesFilter(file, filters)) {
-                    // Return only file information, not the full file object
-                    files.push({
-                        id: file.id,
-                        name: file.name,
-                        type: file.type,
-                        size: file.size,
-                        created: file.created,
-                        modified: file.modified,
-                        tags: file.tags,
-                        folders: file.folders,
-                        ext: file.ext,
-                        width: file.width,
-                        height: file.height
-                    });
-                }
-            }
+            // Get items from Eagle API with filters
+            const items = await this.getAllItems(filters);
+            console.log(`getAllItems returned ${items.length} items`);
+            
+            // Convert Eagle items to our file format
+            const files = items
+                .map(item => this.convertEagleItemToFile(item))
+                .filter(file => file !== null);
+            
+            console.log(`After conversion: ${files.length} files`);
 
             // Sort files
             const sortedFiles = this.sortFiles([...files], filters.orderBy);
@@ -239,96 +250,50 @@ class EagleFileServer {
             const offset = parseInt(filters.offset) || 0;
             const paginatedFiles = sortedFiles.slice(offset, offset + limit);
 
+            // Return only file information, not the full file object
+            const fileInfo = paginatedFiles.map(file => ({
+                id: file.id,
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                created: file.created,
+                modified: file.modified,
+                tags: file.tags,
+                folders: file.folders,
+                ext: file.ext,
+                width: file.width,
+                height: file.height
+            }));
+
+            console.log(`Returning ${fileInfo.length} files (total: ${sortedFiles.length}, limit: ${limit}, offset: ${offset})`);
+
             return {
-                files: paginatedFiles,
+                files: fileInfo,
                 total: sortedFiles.length,
                 limit: limit,
                 offset: offset
             };
         } catch (error) {
             console.error('Error getting file list:', error);
-            return {
-                files: [],
-                total: 0,
-                limit: 0,
-                offset: 0
-            };
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            throw error; // Re-throw to let the handler provide better error messages
         }
     }
 
-    // Load only metadata for filtering (lightweight, doesn't load full file)
-    async loadFileMetadata(fileId) {
-        try {
-            const imagesPath = path.join(this.eagleDataPath, 'images');
-            const itemDir = `${fileId}.info`;
-            const itemPath = path.join(imagesPath, itemDir);
-            
-            if (!fs.existsSync(itemPath)) {
-                return null;
-            }
-            
-            const metadataPath = path.join(itemPath, 'metadata.json');
-            if (!fs.existsSync(metadataPath)) {
-                return null;
-            }
-            
-            const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
-            
-            // Get filename from metadata or find it quickly
-            let fileName = metadata.name || metadata.ext || '';
-            let ext = '';
-            
-            // If we don't have the name in metadata, do a quick directory scan
-            if (!fileName) {
-                const filesInDir = fs.readdirSync(itemPath);
-                const mainFile = filesInDir.find(file => 
-                    !file.endsWith('_thumbnail.png') && 
-                    !file.endsWith('.json') &&
-                    fs.statSync(path.join(itemPath, file)).isFile()
-                );
-                if (mainFile) {
-                    fileName = mainFile;
-                    ext = path.extname(mainFile).toLowerCase();
-                }
-            } else {
-                ext = path.extname(fileName).toLowerCase();
-            }
-            
-            return {
-                id: fileId,
-                name: fileName,
-                ext: ext,
-                tags: metadata.tags || [],
-                folders: metadata.folders || [],
-                metadata: metadata
-            };
-        } catch (error) {
-            // Silently fail for individual files during filtering
-            return null;
-        }
-    }
-
-    // Get a random file ID (optimized - only loads metadata for filtering)
+    // Get a random file ID using Eagle's API
     async getRandomFileId(filters = {}) {
         try {
-            const fileIds = await this.getAllFileIds();
-            const matchingIds = [];
+            // Get all matching items from Eagle API
+            const items = await this.getAllItems(filters);
             
-            // Only load lightweight metadata for filtering
-            for (const fileId of fileIds) {
-                const fileMeta = await this.loadFileMetadata(fileId);
-                if (fileMeta && this.matchesFilter(fileMeta, filters)) {
-                    matchingIds.push(fileId);
-                }
-            }
-
-            if (matchingIds.length === 0) {
+            if (items.length === 0) {
                 return null;
             }
 
-            // Randomly select one ID (we only loaded metadata, not full files)
-            const randomIndex = Math.floor(Math.random() * matchingIds.length);
-            return matchingIds[randomIndex];
+            // Randomly select one item
+            const randomIndex = Math.floor(Math.random() * items.length);
+            return items[randomIndex].id;
         } catch (error) {
             console.error('Error getting random file ID:', error);
             return null;
@@ -505,7 +470,8 @@ class EagleFileServer {
                     status: 'ok', 
                     message: 'Eagle File Server',
                     port: this.port,
-                    eagleDataPath: this.eagleDataPath,
+                    eagleDataPath: this.eagleDataPath || 'using Eagle API',
+                    usingEagleAPI: true,
                     endpoints: {
                         getList: '/getList?limit=10&offset=0&orderBy=random&keyword=&ext=&tags=&folders=',
                         getRandom: '/getRandom?keyword=&ext=&tags=&folders=',
@@ -543,38 +509,73 @@ class EagleFileServer {
 
 
     async handleFileById(req, res, fileId) {
-        const file = await this.loadFileById(fileId);
-        
-        if (!file) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: 'File not found' }));
-            return;
-        }
+        try {
+            if (!this.eagleDataPath) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: false, 
+                    error: 'Library path not configured',
+                    libraryPath: 'not set'
+                }));
+                return;
+            }
+            
+            const file = await this.loadFileById(fileId);
+            
+            if (!file) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: 'File not found' }));
+                return;
+            }
 
-        const filePath = file.path;
-        if (!fs.existsSync(filePath)) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: 'File not found on disk' }));
-            return;
-        }
+            const filePath = file.path;
+            if (!fs.existsSync(filePath)) {
+                console.error(`File path does not exist: ${filePath}`);
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: false, 
+                    error: 'File not found on disk',
+                    filePath: filePath,
+                    libraryPath: this.eagleDataPath
+                }));
+                return;
+            }
 
-        // Set appropriate headers
-        const mimeType = this.getMimeType(filePath);
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
-        res.setHeader('Cache-Control', 'public, max-age=3600');
+            // Set appropriate headers
+            const mimeType = this.getMimeType(filePath);
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+            res.setHeader('Cache-Control', 'public, max-age=3600');
 
-        // Stream the file
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.pipe(res);
+            // Stream the file
+            const fileStream = fs.createReadStream(filePath);
+            fileStream.pipe(res);
 
-        fileStream.on('error', (error) => {
-            console.error('Error streaming file:', error);
+            fileStream.on('error', (error) => {
+                console.error('Error streaming file:', error);
+                console.error('File path:', filePath);
+                console.error('Error code:', error.code);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: false, 
+                        error: 'Error reading file',
+                        details: error.message,
+                        code: error.code
+                    }));
+                }
+            });
+        } catch (error) {
+            console.error('Error in handleFileById:', error);
             if (!res.headersSent) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, error: 'Error reading file' }));
+                res.end(JSON.stringify({ 
+                    success: false, 
+                    error: 'Internal server error',
+                    details: error.message
+                }));
             }
-        });
+        }
     }
 
     async handleGetList(req, res, searchParams) {
@@ -598,10 +599,13 @@ class EagleFileServer {
             }));
         } catch (error) {
             console.error('Error handling getList:', error);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            const errorMessage = error.message || 'Internal server error';
+            const statusCode = errorMessage.includes('not accessible') || errorMessage.includes('not configured') ? 503 : 500;
+            res.writeHead(statusCode, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 success: false,
-                error: 'Internal server error'
+                error: errorMessage,
+                usingEagleAPI: true
             }));
         }
     }
@@ -643,6 +647,16 @@ class EagleFileServer {
 
     async handleGetRandomMedia(req, res, searchParams) {
         try {
+            if (!this.eagleDataPath) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: false, 
+                    error: 'Library path not configured',
+                    libraryPath: 'not set'
+                }));
+                return;
+            }
+            
             const filters = {
                 keyword: searchParams.get('keyword'),
                 ext: searchParams.get('ext'),
@@ -673,8 +687,14 @@ class EagleFileServer {
 
             const filePath = file.path;
             if (!fs.existsSync(filePath)) {
+                console.error(`File path does not exist: ${filePath}`);
                 res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, error: 'File not found on disk' }));
+                res.end(JSON.stringify({ 
+                    success: false, 
+                    error: 'File not found on disk',
+                    filePath: filePath,
+                    libraryPath: this.eagleDataPath
+                }));
                 return;
             }
 
@@ -690,9 +710,16 @@ class EagleFileServer {
 
             fileStream.on('error', (error) => {
                 console.error('Error streaming file:', error);
+                console.error('File path:', filePath);
+                console.error('Error code:', error.code);
                 if (!res.headersSent) {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ success: false, error: 'Error reading file' }));
+                    res.end(JSON.stringify({ 
+                        success: false, 
+                        error: 'Error reading file',
+                        details: error.message,
+                        code: error.code
+                    }));
                 }
             });
         } catch (error) {
@@ -701,7 +728,8 @@ class EagleFileServer {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     success: false,
-                    error: 'Internal server error'
+                    error: 'Internal server error',
+                    details: error.message
                 }));
             }
         }
