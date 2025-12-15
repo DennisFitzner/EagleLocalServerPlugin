@@ -71,6 +71,8 @@ class EagleFileServer {
                 tags: metadata.tags || [],
                 folders: metadata.folders || [],
                 ext: ext,
+                width: metadata.width || null,
+                height: metadata.height || null,
                 metadata: metadata
             };
             
@@ -222,7 +224,9 @@ class EagleFileServer {
                         modified: file.modified,
                         tags: file.tags,
                         folders: file.folders,
-                        ext: file.ext
+                        ext: file.ext,
+                        width: file.width,
+                        height: file.height
                     });
                 }
             }
@@ -358,7 +362,9 @@ class EagleFileServer {
                 modified: file.modified,
                 tags: file.tags,
                 folders: file.folders,
-                ext: file.ext
+                ext: file.ext,
+                width: file.width,
+                height: file.height
             };
         } catch (error) {
             console.error('Error getting random file:', error);
@@ -609,9 +615,9 @@ class EagleFileServer {
                 folders: searchParams.get('folders')
             };
 
-            const randomId = await this.getRandomFileId(filters);
+            const file = await this.getRandomFile(filters);
             
-            if (!randomId) {
+            if (!file) {
                 res.writeHead(404, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     success: false,
@@ -623,9 +629,7 @@ class EagleFileServer {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 success: true,
-                data: {
-                    id: randomId
-                }
+                data: file
             }));
         } catch (error) {
             console.error('Error handling getRandom:', error);
