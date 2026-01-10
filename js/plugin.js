@@ -226,6 +226,37 @@ class EagleFileServer {
         }
     }
 
+    // Calculate aspect ratio from width and height
+    calculateAspectRatio(width, height) {
+        if (!width || !height || width === 0 || height === 0) {
+            return null; // Invalid dimensions
+        }
+        return width / height;
+    }
+
+    // Check if aspect ratio matches target with tolerance
+    matchesAspectRatio(width, height, targetRatio, tolerance = 0.1) {
+        const actualRatio = this.calculateAspectRatio(width, height);
+        if (actualRatio === null) {
+            return false; // Skip items without valid dimensions
+        }
+        return Math.abs(actualRatio - targetRatio) <= tolerance;
+    }
+
+    // Filter files by aspect ratio
+    filterByAspectRatio(files, targetRatio, tolerance = 0.1) {
+        if (targetRatio === null || targetRatio === undefined) {
+            return files; // No aspect ratio filter specified
+        }
+        
+        const target = parseFloat(targetRatio);
+        const tol = parseFloat(tolerance) || 0.1;
+        
+        return files.filter(file => 
+            this.matchesAspectRatio(file.width, file.height, target, tol)
+        );
+    }
+
     // Get list of files with filtering and pagination
     async getFileList(filters = {}) {
         try {
@@ -236,11 +267,22 @@ class EagleFileServer {
             console.log(`getAllItems returned ${items.length} items`);
             
             // Convert Eagle items to our file format
-            const files = items
+            let files = items
                 .map(item => this.convertEagleItemToFile(item))
                 .filter(file => file !== null);
             
             console.log(`After conversion: ${files.length} files`);
+
+            // Apply aspect ratio filter if specified (before sorting for efficiency)
+            if (filters.aspectRatio !== undefined && filters.aspectRatio !== null) {
+                const beforeCount = files.length;
+                files = this.filterByAspectRatio(
+                    files, 
+                    filters.aspectRatio, 
+                    filters.aspectRatioTolerance
+                );
+                console.log(`After aspect ratio filter: ${files.length} files (removed ${beforeCount - files.length})`);
+            }
 
             // Sort files
             const sortedFiles = this.sortFiles([...files], filters.orderBy);
@@ -285,7 +327,23 @@ class EagleFileServer {
     async getRandomFileId(filters = {}) {
         try {
             // Get all matching items from Eagle API
-            const items = await this.getAllItems(filters);
+            let items = await this.getAllItems(filters);
+            
+            // Convert to file format to check aspect ratio if needed
+            if (filters.aspectRatio !== undefined && filters.aspectRatio !== null) {
+                let files = items
+                    .map(item => this.convertEagleItemToFile(item))
+                    .filter(file => file !== null);
+                
+                files = this.filterByAspectRatio(
+                    files, 
+                    filters.aspectRatio, 
+                    filters.aspectRatioTolerance
+                );
+                
+                // Convert back to items array with just IDs
+                items = files.map(file => ({ id: file.id }));
+            }
             
             if (items.length === 0) {
                 return null;
@@ -473,9 +531,9 @@ class EagleFileServer {
                     eagleDataPath: this.eagleDataPath || 'using Eagle API',
                     usingEagleAPI: true,
                     endpoints: {
-                        getList: '/getList?limit=10&offset=0&orderBy=random&keyword=&ext=&tags=&folders=',
-                        getRandom: '/getRandom?keyword=&ext=&tags=&folders=',
-                        getRandomMedia: '/getRandomMedia?keyword=&ext=&tags=&folders=',
+                        getList: '/getList?limit=10&offset=0&orderBy=random&keyword=&ext=&tags=&folders=&aspectRatio=&aspectRatioTolerance=0.1',
+                        getRandom: '/getRandom?keyword=&ext=&tags=&folders=&aspectRatio=&aspectRatioTolerance=0.1',
+                        getRandomMedia: '/getRandomMedia?keyword=&ext=&tags=&folders=&aspectRatio=&aspectRatioTolerance=0.1',
                         fileById: '/files/{fileId}'
                     }
                 }));
@@ -587,7 +645,9 @@ class EagleFileServer {
                 keyword: searchParams.get('keyword'),
                 ext: searchParams.get('ext'),
                 tags: searchParams.get('tags'),
-                folders: searchParams.get('folders')
+                folders: searchParams.get('folders'),
+                aspectRatio: searchParams.get('aspectRatio'), // e.g., "1.777" for 16:9
+                aspectRatioTolerance: searchParams.get('aspectRatioTolerance') // e.g., "0.1" for 10% tolerance
             };
 
             const result = await this.getFileList(filters);
@@ -616,7 +676,9 @@ class EagleFileServer {
                 keyword: searchParams.get('keyword'),
                 ext: searchParams.get('ext'),
                 tags: searchParams.get('tags'),
-                folders: searchParams.get('folders')
+                folders: searchParams.get('folders'),
+                aspectRatio: searchParams.get('aspectRatio'),
+                aspectRatioTolerance: searchParams.get('aspectRatioTolerance')
             };
 
             const file = await this.getRandomFile(filters);
@@ -661,7 +723,9 @@ class EagleFileServer {
                 keyword: searchParams.get('keyword'),
                 ext: searchParams.get('ext'),
                 tags: searchParams.get('tags'),
-                folders: searchParams.get('folders')
+                folders: searchParams.get('folders'),
+                aspectRatio: searchParams.get('aspectRatio'),
+                aspectRatioTolerance: searchParams.get('aspectRatioTolerance')
             };
 
             // Get a random file ID
